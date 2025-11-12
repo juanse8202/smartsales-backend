@@ -531,7 +531,7 @@ class MisPagosView(APIView):
         
         # Obtener el cliente asociado al usuario autenticado
         try:
-            cliente = Cliente.objects.get(usuario=request.user)
+            cliente = Cliente.objects.filter(usuario=request.user).first()
         except Cliente.DoesNotExist:
             return Response({
                 'error': 'No tienes un cliente asociado',

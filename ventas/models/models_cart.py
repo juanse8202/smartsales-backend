@@ -4,7 +4,6 @@ Modelos para el carrito de compras
 import uuid
 from django.db import models
 from django.conf import settings
-from catalogo.models import Catalogo  # Importa tu modelo Catalogo
 
 
 class Cart(models.Model):
@@ -35,7 +34,7 @@ class CartItem(models.Model):
     """
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     # AQUÍ EL CAMBIO CLAVE: Vinculamos con Catálogo, no con Producto específico
-    catalogo = models.ForeignKey(Catalogo, on_delete=models.CASCADE)
+    catalogo = models.ForeignKey('catalogo.Catalogo', on_delete=models.CASCADE)
     quantity = models.PositiveSmallIntegerField(default=1)
 
     class Meta:
