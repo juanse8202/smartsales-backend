@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 # Create your models here.
 
 class RegistroBitacora(models.Model):
@@ -12,7 +13,9 @@ class RegistroBitacora(models.Model):
     
     def __str__(self):
         usuario_str = self.usuario.username if self.usuario else "Sistema"
-        return f'[{self.fecha_hora.strftime("%Y-%m-%d %H:%M:%S")}] {usuario_str} -> {self.accion} en {self.modulo or "N/A"}'
+        local_fecha_hora = timezone.localtime(self.fecha_hora)
+        fecha_str = local_fecha_hora.strftime("%Y-%m-%d %H:%M:%S")
+        return f'[{fecha_str}] {usuario_str} -> {self.accion} en {self.modulo or "N/A"}'
     
     class Meta:
         verbose_name = 'Registro de Bitácora'
