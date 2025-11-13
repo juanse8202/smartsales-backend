@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from administracion.models import RegistroBitacora
+from django.utils import timezone
 
 class RegistroBitacoraSerializer(serializers.ModelSerializer):
     usuario_username = serializers.SerializerMethodField(read_only=True)
@@ -30,4 +31,5 @@ class RegistroBitacoraSerializer(serializers.ModelSerializer):
         return obj.usuario.username if obj.usuario else "Sistema"
     
     def get_fecha_hora_formateada(self, obj):
-        return obj.fecha_hora.strftime("%d/%m/%Y %H:%M:%S")
+        local_fecha = timezone.localtime(obj.fecha_hora)
+        return local_fecha.strftime("%d/%m/%Y %H:%M:%S")

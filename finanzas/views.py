@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from decimal import Decimal
 import stripe
 import logging
+from django.utils import timezone
 
 from ventas.models import Pago, Venta
 from .serializers import (
@@ -52,9 +53,12 @@ def actualizar_stock_productos(venta):
             
             # Marcar productos como vendidos
             productos_actualizados = 0
+            fecha_actual = timezone.now()
+            
             for producto in productos_disponibles:
                 producto.estado = 'vendido'
-                producto.save(update_fields=['estado'])
+                producto.fecha_venta = fecha_actual
+                producto.save(update_fields=['estado', 'fecha_venta'])
                 productos_actualizados += 1
                 logger.info(f"✅ Producto {producto.numero_serie} marcado como vendido")
             
