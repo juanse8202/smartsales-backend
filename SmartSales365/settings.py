@@ -28,7 +28,18 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ["*", ]
+# ALLOWED_HOSTS - Permitir acceso desde diferentes ubicaciones
+ALLOWED_HOSTS = [
+    "192.168.0.3",  # Tu IP local
+    "localhost",
+    "127.0.0.1",
+    "10.0.2.2",  # Emulador Android
+    "backend-git-production.up.railway.app",
+]
+
+# Para desarrollo local, permitir cualquier host
+if DEBUG:
+    ALLOWED_HOSTS.append("*")
 
 
 # Application definition
@@ -152,18 +163,41 @@ REST_FRAMEWORK = {
     ),
 }
 
-CORS_ALLOW_CREDENTIALS = True
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-
-CORS_ALLOW_ALL_ORIGINS = False
+# CORS Configuration - Permitir frontend React y Flutter móvil
+CORS_ALLOW_ALL_ORIGINS = False  # Más seguro especificar orígenes permitidos
 
 CORS_ALLOWED_ORIGINS = [
+    "https://frontend-git-production.up.railway.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://192.168.0.3:5173",  # React frontend en tu IP local
+    "http://192.168.0.3:3000",
+    "http://192.168.0.3:8000",
+]
+
+# Permitir que el navegador envíe cookies en peticiones cross-origin
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF Trusted Origins - Incluye tu IP local y emulador Android
+CSRF_TRUSTED_ORIGINS = [
+    "https://frontend-git-production.up.railway.app",
+    "https://backend-git-production.up.railway.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://192.168.0.3:5173",
+    "http://192.168.0.3:3000",
+    "http://192.168.0.3:8000",
+    "http://10.0.2.2:8000",  # Emulador Android
 ]
 
 API_KEY_IMGBB= config('API_KEY_IMGBB', default='')
