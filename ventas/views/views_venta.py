@@ -16,7 +16,8 @@ from ventas.serializers.serializers_venta import (
     PagoCreateSerializer
 )
 from administracion.core.utils import registrar_bitacora
-
+from django.db.models import Sum, Count, Avg
+from django.db.models.functions import TruncDate
 
 class VentaViewSet(viewsets.ModelViewSet):
     """
@@ -155,6 +156,41 @@ class VentaViewSet(viewsets.ModelViewSet):
                 stats[key] = Decimal('0.00') if 'ingresos' in key or 'promedio' in key else 0
         
         return Response(stats)
+    
+    @action(detail=False, methods=['get'], url_path='dashboard-sales-over-time')
+    def dashboard_sales_over_time(self, request):
+        """
+        Devuelve las ventas totales agrupadas por día para un gráfico de líneas.
+        Ruta: GET /api/ventas/dashboard-sales-over-time/
+        """
+        # (Usamos .get_queryset() para respetar tus filtros base si los hubiera)
+        queryset = self.get_queryset().filter(estado='completada')
+        
+        sales_by_day = queryset \
+            .annotate(day=TruncDate('fecha')) \
+            .values('day') \
+            .annotate(total_ventas=Sum('total')) \
+            .order_by('day')
+        
+        return Response(sales_by_day)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-top-clients')
+    def dashboard_top_clients(self, request):
+        """
+        Devuelve el Top 5 de clientes que más han gastado.
+        Ruta: GET /api/ventas/dashboard-top-clients/
+        """
+        queryset = self.get_queryset().filter(estado='completada')
+        
+        top_clients = queryset \
+            .values('cliente__nombre', 'cliente__nit_ci') \
+            .annotate(
+                cantidad_compras=Count('id'),
+                monto_total=Sum('total')
+            ) \
+            .order_by('-monto_total')[:5]
+        
+        return Response(top_clients)
 
 
 class DetalleVentaViewSet(viewsets.ReadOnlyModelViewSet):
