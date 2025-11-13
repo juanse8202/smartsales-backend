@@ -169,7 +169,9 @@ REST_FRAMEWORK = {
 }
 
 # CORS Configuration - Permitir frontend React y Flutter móvil
-CORS_ALLOW_ALL_ORIGINS = False  # Más seguro especificar orígenes permitidos
+# IMPORTANTE: Las aplicaciones móviles necesitan CORS_ALLOW_ALL_ORIGINS = True
+# porque no tienen un "origen" HTTP tradicional
+CORS_ALLOW_ALL_ORIGINS = True  # Necesario para Flutter móvil
 
 CORS_ALLOWED_ORIGINS = [
     "https://graceful-generosity-production-edc7.up.railway.app",
