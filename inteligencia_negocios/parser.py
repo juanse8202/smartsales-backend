@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 
 class ReportParser:
     
-    # --- Palabras clave de Inventario (como antes) ---
+    # --- (Palabras clave de Marcas, Categorías y Campos se quedan igual) ---
     try:
         MARCAS_CONOCIDAS = [m.nombre.lower() for m in Marca.objects.all()]
     except Exception:
@@ -22,48 +22,71 @@ class ReportParser:
     except Exception:
         CATEGORIAS_MAPA = {}
     
-    # --- Palabras clave de Campos (Ampliadas) ---
     CAMPOS_MAPA = {
-        # Campos de Inventario
         'numero de serie': 'numero_serie', 'costo': 'costo',
         'garantía': 'garantia_vigente', 'fin de garantia': 'fecha_fin_garantia',
         'nombre': 'catalogo__nombre', 'precio': 'catalogo__precio',
-        
-        # Campos de Venta (Nuevos)
         'cliente': 'cliente__nombre', 'total': 'total', 'fecha': 'fecha',
         'estado': 'estado', 'subtotal': 'subtotal', 'descuento': 'descuento'
     }
 
+
     def parse(self, prompt):
         result = {
-            'type': None, # Ya no asumimos 'inventario'
+            'type': None,
             'filters': {},
             'format': 'json',
             'group_by': None,
             'select_fields': []
         }
 
-        # --- A. DETECTAR TIPO DE REPORTE (¡AMPLIADO!) ---
-        if 'venta' in prompt or 'pedido' in prompt or 'ingreso' in prompt:
+        # --- A. DETECTAR TIPO DE REPORTE (¡ORDEN CORREGIDO!) ---
+        # 1. Revisamos INVENTARIO primero, es más específico.
+        if 'por producto' in prompt or 'por cliente' in prompt:
             result['type'] = 'ventas'
-        elif 'inventario' in prompt or 'producto' in prompt or 'stock' in prompt:
+        
+        # 2. Si no es un group_by de ventas, revisamos palabras clave de ventas.
+        elif 'venta' in prompt or 'pedido' in prompt or 'ingreso' in prompt:
+            result['type'] = 'ventas'
+            
+        # 3. Si no es ventas, revisamos palabras clave de inventario.
+        elif 'inventario' in prompt or 'stock' in prompt or 'producto' in prompt:
             result['type'] = 'inventario'
+        
         else:
-            raise ValueError("No entiendo si pides un reporte de 'ventas' o de 'inventario'.")
+            # Si el prompt era solo "reporte por marca", no sabemos qué reportar
+            if result['group_by']:
+                raise ValueError("No entiendo si pides reporte de 'ventas' o 'inventario' por marca/categoría.")
+            else:
+                raise ValueError("No entiendo si pides un reporte de 'ventas' o de 'inventario'.")
 
         # --- B. DETECTAR FORMATO ---
         if 'pdf' in prompt: result['format'] = 'pdf'
         elif 'excel' in prompt: result['format'] = 'excel'
 
-        # --- C. DETECTAR AGRUPACIÓN (¡AMPLIADO!) ---
-        if 'por categoria' in prompt: result['group_by'] = 'categoria'
-        elif 'por marca' in prompt: result['group_by'] = 'marca'
-        elif 'por cliente' in prompt: result['group_by'] = 'cliente'
-        elif 'por producto' in prompt: result['group_by'] = 'producto' # Para agrupar ventas por producto
-
-        # --- D. DETECTAR FILTROS (¡AMPLIADO!) ---
+        # --- C. DETECTAR AGRUPACIÓN (¡LÓGICA CORREGIDA!) ---
+        # La agrupación depende del tipo de reporte que ya detectamos
         
-        # Filtros de Estado (pueden aplicar a ambos)
+        if result['type'] == 'ventas':
+            if 'por cliente' in prompt:
+                result['group_by'] = 'cliente'
+            elif 'por producto' in prompt: # "por producto" SÓLO aplica a ventas
+                result['group_by'] = 'producto'
+            elif 'por categoria' in prompt:
+                result['group_by'] = 'categoria'
+            elif 'por marca' in prompt:
+                result['group_by'] = 'marca'
+        
+        elif result['type'] == 'inventario':
+            # "por producto" o "por cliente" no tienen sentido aquí
+            if 'por categoria' in prompt: 
+                result['group_by'] = 'categoria'
+            elif 'por marca' in prompt:
+                result['group_by'] = 'marca'
+
+        # --- D. DETECTAR FILTROS (Sin cambios, ya era correcto) ---
+        
+        # Filtros de Estado
         if 'disponible' in prompt and result['type'] == 'inventario':
             result['filters']['estado'] = 'disponible'
         elif 'vendido' in prompt and result['type'] == 'inventario':
@@ -73,7 +96,7 @@ class ReportParser:
         elif 'completada' in prompt and result['type'] == 'ventas':
             result['filters']['estado'] = 'completada'
         
-        # Filtros de Fecha (para Ventas)
+        # Filtros de Fecha
         if result['type'] == 'ventas':
             today = datetime.now()
             if 'hoy' in prompt:
@@ -86,25 +109,37 @@ class ReportParser:
                 result['filters']['fecha__month'] = last_month.month
                 result['filters']['fecha__year'] = last_month.year
         
-        # Filtros de Marca/Categoría (pueden aplicar a ambos)
+        # Filtros de Marca/Categoría
+        filter_prefix = ''
+        if result['type'] == 'inventario':
+            # Consultas de inventario siempre empiezan en Producto
+            filter_prefix = 'catalogo__'
+        elif result['type'] == 'ventas':
+            # Consultas agrupadas por producto/cat/marca empiezan en DetalleVenta
+            if result['group_by'] in ['producto', 'categoria', 'marca']:
+                filter_prefix = 'catalogo__'
+            else:
+                # Consultas agrupadas por cliente o listados simples empiezan en Venta
+                filter_prefix = 'detalles__catalogo__'
+
+        # 2. Aplicar los filtros con el prefijo correcto
         for marca in self.MARCAS_CONOCIDAS:
             if marca in prompt:
-                filter_key = 'catalogo__marca__nombre__icontains' if result['type'] == 'inventario' else 'detalles__catalogo__marca__nombre__icontains'
-                result['filters'][filter_key] = marca
+                # Usamos f-string para construir la clave del filtro
+                result['filters'][f'{filter_prefix}marca__nombre__icontains'] = marca
                 break 
+        
         for keyword, nombre_categoria in self.CATEGORIAS_MAPA.items():
             if keyword in prompt:
-                filter_key = 'catalogo__categoria__nombre__icontains' if result['type'] == 'inventario' else 'detalles__catalogo__categoria__nombre__icontains'
-                result['filters'][filter_key] = nombre_categoria
+                result['filters'][f'{filter_prefix}categoria__nombre__icontains'] = nombre_categoria
                 break
         
-        # --- E. DETECTAR CAMPOS SELECCIONADOS ---
+        # --- E. DETECTAR CAMPOS SELECCIONADOS (Sin cambios, ya era correcto) ---
         if not result['group_by']:
             for keyword, field_name in self.CAMPOS_MAPA.items():
                 if keyword in prompt:
                     result['select_fields'].append(field_name)
             
-            # Asignar campos por defecto si no se seleccionó ninguno
             if not result['select_fields']:
                 if result['type'] == 'inventario':
                     result['select_fields'] = ['numero_serie', 'catalogo__nombre', 'estado']
