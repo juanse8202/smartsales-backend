@@ -156,21 +156,11 @@ class RegisterView(APIView):
             )
 
         try:
-            # Crear el usuario
+            # Crear el usuario (sin cliente automático)
             user = User.objects.create_user(
                 username=username,
                 email=email,
                 password=password
-            )
-
-            # Crear automáticamente un Cliente asociado al usuario
-            cliente = Cliente.objects.create(
-                nombre=username,  # Usar username como nombre inicial
-                telefono='',
-                razon_social='natural',
-                estado='activo',
-                usuario=user,
-                nit_ci=''
             )
 
             # Registrar en bitácora
@@ -178,7 +168,7 @@ class RegisterView(APIView):
                 request=request,
                 usuario=user,
                 accion="REGISTRO",
-                descripcion=f"Nuevo usuario registrado: '{user.username}' con email '{user.email}' y cliente asociado (ID: {cliente.id})",
+                descripcion=f"Nuevo usuario registrado: '{user.username}' con email '{user.email}'. Cliente pendiente de completar datos.",
                 modulo="Autenticacion"
             )
 
@@ -186,13 +176,13 @@ class RegisterView(APIView):
             refresh = RefreshToken.for_user(user)
             
             return Response({
-                "message": "Usuario registrado exitosamente",
+                "message": "Usuario registrado exitosamente. Complete los datos del cliente.",
                 "user": {
                     "id": user.id,
                     "username": user.username,
                     "email": user.email,
                     "is_staff": user.is_staff,
-                    "cliente_id": cliente.id,
+                    "cliente_id": None,  # Sin cliente aún
                 },
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
@@ -513,45 +503,99 @@ class CiudadViewSet(viewsets.ModelViewSet):
         return queryset
 
 class MiClienteView(APIView):
-    """Vista para obtener y actualizar el cliente asociado al usuario autenticado.
+    """Vista para obtener, crear y actualizar el cliente asociado al usuario autenticado.
     
-    GET: Devuelve el cliente asociado o crea uno si no existe
+    GET: Devuelve el cliente asociado (null si no existe)
+    POST: Crea el cliente con los datos proporcionados (solo si no existe)
     PUT: Actualiza los datos del cliente
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        print(f"DEBUG MiClienteView - Usuario autenticado: {request.user}")
-        print(f"DEBUG MiClienteView - Es anónimo: {request.user.is_anonymous}")
-        
+        """Obtener cliente asociado al usuario (sin crearlo automáticamente)"""
         user = request.user
         
         # Buscar el cliente asociado al usuario
         cliente = Cliente.objects.filter(usuario=user).first()
         
-        # Si no existe, crear uno automáticamente
         if not cliente:
+            return Response({
+                "cliente_id": None,
+                "message": "No tienes un perfil de cliente. Completa tus datos para crear uno."
+            }, status=status.HTTP_200_OK)
+        
+        serializer = ClienteSerializer(cliente)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Crear cliente asociado al usuario con datos completos"""
+        user = request.user
+        
+        # Verificar si ya tiene un cliente
+        if Cliente.objects.filter(usuario=user).exists():
+            return Response(
+                {"error": "Ya tienes un perfil de cliente asociado"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar datos requeridos
+        nombre = request.data.get('nombre')
+        nit_ci = request.data.get('nit_ci')
+        telefono = request.data.get('telefono')
+        razon_social = request.data.get('razon_social', 'natural')
+        
+        if not all([nombre, nit_ci, telefono]):
+            return Response(
+                {"error": "Los campos nombre, nit_ci y telefono son requeridos"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Obtener ciudad y departamento
+            ciudad_id = request.data.get('ciudad')
+            departamento_id = request.data.get('departamento')
+            
+            ciudad = None
+            departamento = None
+            
+            if ciudad_id:
+                ciudad = Ciudad.objects.filter(id=ciudad_id).first()
+            if departamento_id:
+                departamento = Departamento.objects.filter(id=departamento_id).first()
+            
+            # Crear el cliente
             cliente = Cliente.objects.create(
-                nombre=user.username,
-                telefono='',
-                razon_social='natural',
-                estado='activo',
+                nombre=nombre,
+                nit_ci=nit_ci,
+                telefono=telefono,
+                email=request.data.get('email', user.email),
+                direccion=request.data.get('direccion', ''),
+                razon_social=razon_social,
+                sexo=request.data.get('sexo', ''),
+                estado=request.data.get('estado', 'activo'),
                 usuario=user,
-                nit_ci=''
+                ciudad=ciudad,
+                departamento=departamento
             )
             
             # Registrar en bitácora
             registrar_bitacora(
                 request=request,
                 usuario=user,
-                accion="CREAR CLIENTE AUTO",
-                descripcion=f"Cliente creado automáticamente para usuario '{user.username}' (ID: {cliente.id})",
+                accion="COMPLETAR PERFIL",
+                descripcion=f"Usuario '{user.username}' completó su perfil de cliente (ID: {cliente.id})",
                 modulo="Clientes"
             )
-        
-        serializer = ClienteSerializer(cliente)
-        return Response(serializer.data)
+            
+            serializer = ClienteSerializer(cliente)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error al crear perfil de cliente: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def put(self, request):
         """Actualizar datos del cliente asociado al usuario"""
