@@ -18,6 +18,14 @@ from ventas.serializers.serializers_venta import (
 from administracion.core.utils import registrar_bitacora
 from django.db.models import Sum, Count, Avg
 from django.db.models.functions import TruncDate
+import joblib
+import pandas as pd
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+
+MODEL_FILE_PATH = 'sales_model.pkl'
 
 class VentaViewSet(viewsets.ModelViewSet):
     """
@@ -277,6 +285,50 @@ class PagoViewSet(viewsets.ModelViewSet):
         )
         
         return Response(serializer.data)
+
+class SalesPredictionView(APIView):
+    """
+    Carga el modelo de IA entrenado y devuelve las predicciones
+    de ventas para los próximos 6 meses.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            # 1. Cargar el modelo guardado
+            model = joblib.load(MODEL_FILE_PATH)
+        except FileNotFoundError:
+            return Response(
+                {'error': 'Modelo no encontrado. Por favor, entrene el modelo primero.'}, 
+                status=503 # Service Unavailable
+            )
+        except Exception as e:
+            return Response({'error': f'Error al cargar el modelo: {str(e)}'}, status=500)
+
+        # 2. Generar "features" para los próximos 6 meses
+        predictions = []
+        today = datetime.now()
+        
+        for i in range(1, 7): # Predecir los próximos 6 meses
+            future_date = today + relativedelta(months=i)
+            year = future_date.year
+            month_num = future_date.month
+            
+            # Crear el DataFrame para predecir (debe tener las mismas columnas que 'X' en el entrenamiento)
+            features = pd.DataFrame([[year, month_num]], columns=['year', 'month_num'])
+            
+            # 3. Hacer la predicción
+            predicted_sales = model.predict(features)[0]
+            
+            predictions.append({
+                'label': f'{year}-{month_num:02d}', # Formato '2026-01'
+                'predicted_sales': round(predicted_sales, 2)
+            })
+
+        # 4. Devolver el JSON listo para el gráfico
+        # Ej: [{'label': '2025-12', 'predicted_sales': 15000.00}, 
+        #      {'label': '2026-01', 'predicted_sales': 18000.00}]
+        return Response(predictions)
 
 
 # Importar también models para usar Q en las consultas
