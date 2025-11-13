@@ -34,7 +34,8 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "10.0.2.2",  # Emulador Android
-    "backend-git-production.up.railway.app",
+    "smartsales-backend-production.up.railway.app"
+    
 ]
 
 # Para desarrollo local, permitir cualquier host
@@ -51,6 +52,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'whitenoise.runserver_nostatic',  # Para servir archivos estáticos en producción
     'rest_framework',
     'corsheaders',
     'administracion',
@@ -67,6 +69,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -167,7 +170,7 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = False  # Más seguro especificar orígenes permitidos
 
 CORS_ALLOWED_ORIGINS = [
-    "https://frontend-git-production.up.railway.app",
+    "https://graceful-generosity-production-edc7.up.railway.app/",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
@@ -184,8 +187,8 @@ CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Trusted Origins - Incluye tu IP local y emulador Android
 CSRF_TRUSTED_ORIGINS = [
-    "https://frontend-git-production.up.railway.app",
-    "https://backend-git-production.up.railway.app",
+    "https://graceful-generosity-production-edc7.up.railway.app/",
+    "https://smartsales-backend-production.up.railway.app/",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
