@@ -170,7 +170,7 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = False  # Más seguro especificar orígenes permitidos
 
 CORS_ALLOWED_ORIGINS = [
-    "https://graceful-generosity-production-edc7.up.railway.app/",
+    "https://graceful-generosity-production-edc7.up.railway.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
@@ -189,8 +189,8 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # CSRF Trusted Origins - Incluye tu IP local y emulador Android
 CSRF_TRUSTED_ORIGINS = [
-    "https://graceful-generosity-production-edc7.up.railway.app/",
-    "https://smartsales-backend-production.up.railway.app/",
+    "https://graceful-generosity-production-edc7.up.railway.app",
+    "https://smartsales-backend-production.up.railway.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
