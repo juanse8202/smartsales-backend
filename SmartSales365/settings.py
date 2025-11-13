@@ -185,6 +185,8 @@ CORS_ALLOWED_ORIGINS = [
 # Permitir que el navegador envíe cookies en peticiones cross-origin
 CORS_ALLOW_CREDENTIALS = True
 
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # CSRF Trusted Origins - Incluye tu IP local y emulador Android
 CSRF_TRUSTED_ORIGINS = [
     "https://graceful-generosity-production-edc7.up.railway.app/",
