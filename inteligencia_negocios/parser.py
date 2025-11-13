@@ -98,16 +98,24 @@ class ReportParser:
         
         # Filtros de Fecha
         if result['type'] == 'ventas':
+            
+            # 1. Decidimos el prefijo del filtro de fecha
+            date_prefix = 'fecha__' # Por defecto (para Venta)
+            if result['group_by'] in ['producto', 'categoria', 'marca']:
+                # Si agrupamos así, el Generator consulta DetalleVenta
+                date_prefix = 'venta__fecha__' 
+
+            # 2. Aplicamos los filtros de fecha con el prefijo correcto
             today = datetime.now()
             if 'hoy' in prompt:
-                result['filters']['fecha__date'] = today.date()
+                result['filters'][f'{date_prefix}date'] = today.date()
             elif 'este mes' in prompt:
-                result['filters']['fecha__month'] = today.month
-                result['filters']['fecha__year'] = today.year
+                result['filters'][f'{date_prefix}month'] = today.month
+                result['filters'][f'{date_prefix}year'] = today.year
             elif 'mes pasado' in prompt:
                 last_month = today - relativedelta(months=1)
-                result['filters']['fecha__month'] = last_month.month
-                result['filters']['fecha__year'] = last_month.year
+                result['filters'][f'{date_prefix}month'] = last_month.month
+                result['filters'][f'{date_prefix}year'] = last_month.year
         
         # Filtros de Marca/Categoría
         filter_prefix = ''
