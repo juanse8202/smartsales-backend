@@ -45,17 +45,18 @@ class ReportParser:
         if 'por producto' in prompt or 'por cliente' in prompt:
             result['type'] = 'ventas'
         
-        # 2. Si no es un group_by de ventas, revisamos palabras clave de ventas.
-        elif 'venta' in prompt or 'pedido' in prompt or 'ingreso' in prompt:
-            result['type'] = 'ventas'
-            
-        # 3. Si no es ventas, revisamos palabras clave de inventario.
+        # 2. SI NO ES AGRUPADO, buscamos palabras clave de INVENTARIO primero.
+        #    "producto" y "stock" son más específicas que "venta".
         elif 'inventario' in prompt or 'stock' in prompt or 'producto' in prompt:
             result['type'] = 'inventario'
+
+        # 3. Si no es inventario, RECIÉN buscamos palabras de ventas.
+        elif 'venta' in prompt or 'pedido' in prompt or 'ingreso' in prompt:
+            result['type'] = 'ventas'
         
         else:
-            # Si el prompt era solo "reporte por marca", no sabemos qué reportar
-            if result['group_by']:
+            # (Lógica de error se queda igual)
+            if result.get('group_by'): # Usamos .get() por si acaso
                 raise ValueError("No entiendo si pides reporte de 'ventas' o 'inventario' por marca/categoría.")
             else:
                 raise ValueError("No entiendo si pides un reporte de 'ventas' o de 'inventario'.")
