@@ -17,7 +17,7 @@ from ventas.serializers.serializers_venta import (
 )
 from administracion.core.utils import registrar_bitacora
 from django.db.models import Sum, Count, Avg
-from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncDate, TruncMonth, TruncYear
 import joblib
 import pandas as pd
 from datetime import datetime
@@ -168,26 +168,107 @@ class VentaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='dashboard-sales-over-time')
     def dashboard_sales_over_time(self, request):
         """
-        Devuelve las ventas totales agrupadas por día para un gráfico de líneas.
-        Ruta: GET /api/ventas/dashboard-sales-over-time/
+        Devuelve las ventas totales agrupadas por día, mes o año.
+        Usa un query param: ?periodo=dia (default), ?periodo=mes, ?periodo=anio
+        
+        Ruta por Día:   GET /api/ventas/dashboard-sales-over-time/
+        Ruta por Mes:  GET /api/ventas/dashboard-sales-over-time/?periodo=mes
+        Ruta por Año:  GET /api/ventas/dashboard-sales-over-time/?periodo=anio
         """
-        # (Usamos .get_queryset() para respetar tus filtros base si los hubiera)
+        
+        # 1. Leemos el parámetro 'periodo' de la URL. Por defecto es 'dia'.
+        periodo = request.query_params.get('periodo', 'dia').lower()
+        
         queryset = self.get_queryset().filter(estado='completada')
         
-        sales_by_day = queryset \
-            .annotate(day=TruncDate('fecha')) \
-            .values('day') \
-            .annotate(total_ventas=Sum('total')) \
-            .order_by('day')
+        # 2. Decidimos qué función de truncamiento usar
+        if periodo == 'mes':
+            sales_data = queryset \
+                .annotate(periodo_agrupado=TruncMonth('fecha')) \
+                .values('periodo_agrupado') \
+                .annotate(total_ventas=Sum('total')) \
+                .order_by('periodo_agrupado')
+                
+        elif periodo == 'anio':
+            sales_data = queryset \
+                .annotate(periodo_agrupado=TruncYear('fecha')) \
+                .values('periodo_agrupado') \
+                .annotate(total_ventas=Sum('total')) \
+                .order_by('periodo_agrupado')
         
-        return Response(sales_by_day)
+        else: # Por defecto, agrupamos por día
+            sales_data = queryset \
+                .annotate(periodo_agrupado=TruncDate('fecha')) \
+                .values('periodo_agrupado') \
+                .annotate(total_ventas=Sum('total')) \
+                .order_by('periodo_agrupado')
+        
+        # 3. Renombramos la clave para que el frontend la entienda
+        # (El resultado de .values() es [{'periodo_agrupado': '...', 'total_ventas': ...}])
+        # Lo cambiamos a [{'fecha': '...', 'total_ventas': ...}]
+        
+        # Nota: Convertimos la fecha a string para un JSON limpio
+        response_data = [
+            {
+                'fecha': item['periodo_agrupado'].strftime('%Y-%m-%d'), 
+                'total_ventas': item['total_ventas']
+            } 
+            for item in sales_data
+        ]
+        
+        return Response(response_data)
+    
+    @action(detail=False, methods=['get'], url_path='dashboard-products')
+    def dashboard_products_report(self, request):
+        """
+        Devuelve el Top 5 o Bottom 5 de productos.
+        Usa un query param: ?order=asc (para bottom) o ?order=desc (para top).
 
-    @action(detail=False, methods=['get'], url_path='dashboard-top-clients')
-    def dashboard_top_clients(self, request):
+        Ruta (Top 5): GET /api/ventas/dashboard-products/
+        Ruta (Bottom 5): GET /api/ventas/dashboard-products/?order=asc
         """
-        Devuelve el Top 5 de clientes que más han gastado.
-        Ruta: GET /api/ventas/dashboard-top-clients/
+
+        # 1. Revisa el query param 'order'.
+        order = request.query_params.get('order', 'desc').lower()
+        
+        # 2. Define el campo por el cual ordenar
+        if order == 'asc':
+            order_by_field = 'monto_total_vendido' # Ascendente (Bottom 5)
+        else:
+            order_by_field = '-monto_total_vendido' # Descendente (Top 5)
+
+        # 3. Construye la consulta
+        products_data = DetalleVenta.objects.filter(venta__estado='completada') \
+            .values('catalogo__nombre') \
+            .annotate(monto_total_vendido=Sum('total')) \
+            .order_by(order_by_field)[:5] # <-- ¡Usa el campo dinámico!
+        
+        return Response(products_data)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-clients')
+    def dashboard_clients_report(self, request):
         """
+        Devuelve el Top 5 o Bottom 5 de clientes (los que más o menos han gastado).
+        Usa un query param '?order=asc' para Bottom 5.
+        Por defecto (sin query param), devuelve el Top 5.
+        
+        Ruta Top 5: GET /api/ventas/dashboard-clients/
+        Ruta Bottom 5: GET /api/ventas/dashboard-clients/?order=asc
+        """
+        
+        # 1. Leemos el parámetro 'order' de la URL.
+        # Si no se envía, usa 'desc' (descendente) como valor por defecto.
+        order_direction = request.query_params.get('order', 'desc').lower()
+
+        # 2. Decidimos el campo por el cual ordenar
+        if order_direction == 'asc':
+            # Orden Ascendente = Menos ventas (Bottom 5)
+            order_by_field = 'monto_total'
+        else:
+            # Orden Descendente = Más ventas (Top 5)
+            order_by_field = '-monto_total'
+
+        # 3. El resto de la consulta es idéntica
         queryset = self.get_queryset().filter(estado='completada')
         
         top_clients = queryset \
@@ -196,7 +277,7 @@ class VentaViewSet(viewsets.ModelViewSet):
                 cantidad_compras=Count('id'),
                 monto_total=Sum('total')
             ) \
-            .order_by('-monto_total')[:5]
+            .order_by(order_by_field)[:5] # <-- 4. Usamos el campo dinámico
         
         return Response(top_clients)
 
