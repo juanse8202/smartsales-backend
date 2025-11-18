@@ -2,6 +2,7 @@
 from catalogo.models import Marca, Categoria
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import re
 
 class ReportParser:
     
@@ -29,8 +30,13 @@ class ReportParser:
         'cliente': 'cliente__nombre', 'total': 'total', 'fecha': 'fecha',
         'estado': 'estado', 'subtotal': 'subtotal', 'descuento': 'descuento'
     }
-
-
+    
+    MONTH_MAP = {
+        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
+        'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
+    }
+    
     def parse(self, prompt):
         result = {
             'type': None,
@@ -100,14 +106,13 @@ class ReportParser:
         # Filtros de Fecha
         if result['type'] == 'ventas':
             
-            # 1. Decidimos el prefijo del filtro de fecha
-            date_prefix = 'fecha__' # Por defecto (para Venta)
+            date_prefix = 'fecha__'
             if result['group_by'] in ['producto', 'categoria', 'marca']:
-                # Si agrupamos así, el Generator consulta DetalleVenta
                 date_prefix = 'venta__fecha__' 
 
-            # 2. Aplicamos los filtros de fecha con el prefijo correcto
             today = datetime.now()
+            
+            # 1. Buscamos fechas relativas (como antes)
             if 'hoy' in prompt:
                 result['filters'][f'{date_prefix}date'] = today.date()
             elif 'este mes' in prompt:
@@ -117,6 +122,30 @@ class ReportParser:
                 last_month = today - relativedelta(months=1)
                 result['filters'][f'{date_prefix}month'] = last_month.month
                 result['filters'][f'{date_prefix}year'] = last_month.year
+            
+            # 2. ¡NUEVO! Buscamos fechas específicas (ej. "septiembre 2024" o "de 2023")
+            else:
+                month_num = None
+                year_num = today.year # Usamos el año actual por defecto
+
+                # Buscar un nombre de mes
+                for month_name, num in self.MONTH_MAP.items():
+                    if month_name in prompt:
+                        month_num = num
+                        break
+                
+                # Buscar un año de 4 dígitos (ej. 2023, 2024, 2025)
+                match_year = re.search(r'(\d{4})', prompt)
+                if match_year:
+                    year_num = int(match_year.group(1))
+
+                # Si encontramos un mes, filtramos por mes y año
+                if month_num:
+                    result['filters'][f'{date_prefix}month'] = month_num
+                    result['filters'][f'{date_prefix}year'] = year_num
+                # Si SÓLO encontramos un año, filtramos por año
+                elif match_year:
+                    result['filters'][f'{date_prefix}year'] = year_num
         
         # Filtros de Marca/Categoría
         filter_prefix = ''
