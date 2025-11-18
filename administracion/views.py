@@ -768,5 +768,15 @@ class ClienteViewSet(viewsets.ModelViewSet):
         )
 
 class RegistroBitacoraViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = RegistroBitacora.objects.all()
+    queryset = RegistroBitacora.objects.select_related('usuario').order_by('-fecha_hora')
     serializer_class = RegistroBitacoraSerializer
+    
+    def get_queryset(self):
+        """Optimizar consulta y limitar resultados"""
+        queryset = super().get_queryset()
+        
+        # Limitar a los últimos 500 registros por defecto
+        limit = int(self.request.query_params.get('limit', 500))
+        queryset = queryset[:limit]
+        
+        return queryset
