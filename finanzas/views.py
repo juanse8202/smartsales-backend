@@ -293,6 +293,24 @@ class ConfirmPaymentAutoVenta(APIView):
             status_pi = pi.get("status")
             logger.info(f"✅ Payment Intent confirmado: {status_pi}")
             
+            # Si el pago fue exitoso, actualizar el registro en BD
+            if status_pi == "succeeded":
+                pago = Pago.objects.filter(transaccion_id=pi_id).first()
+                if pago:
+                    pago.estado = 'completado'
+                    pago.save(update_fields=['estado'])
+                    
+                    # Actualizar estado de la venta
+                    if pago.venta:
+                        pago.venta.estado = 'completada'
+                        pago.venta.save(update_fields=['estado'])
+                        logger.info(f"✅ Venta #{pago.venta.id} marcada como completada")
+                        
+                        # Actualizar stock de productos (marcar como vendidos)
+                        actualizar_stock_productos(pago.venta)
+                    
+                    logger.info(f"✅ Pago #{pago.id} marcado como completado")
+            
             return Response({
                 "success": True,
                 "status": status_pi,
@@ -339,6 +357,9 @@ class ConfirmPaymentWithCardVenta(APIView):
         pi_id = request.data.get("payment_intent_id")
         payment_method_id = request.data.get("payment_method_id")
         card_number = request.data.get("card_number", "").replace(" ", "")
+        exp_month = request.data.get("exp_month", "")
+        exp_year = request.data.get("exp_year", "")
+        cvc = request.data.get("cvc", "")
         
         if not pi_id:
             return Response(
@@ -346,30 +367,60 @@ class ConfirmPaymentWithCardVenta(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Mapear números de tarjeta de prueba a payment methods
-        if not payment_method_id and card_number:
-            test_cards = {
-                "4242424242424242": "pm_card_visa",
-                "5555555555554444": "pm_card_mastercard",
-                "378282246310005": "pm_card_amex",
-            }
-            
-            if card_number in test_cards:
-                payment_method_id = test_cards[card_number]
-                logger.info(f"💳 Mapeando tarjeta de prueba a: {payment_method_id}")
+        # Si no hay payment_method_id, intentar crearlo con los datos de la tarjeta
+        if not payment_method_id:
+            if card_number and exp_month and exp_year and cvc:
+                try:
+                    logger.info(f"💳 Creando Payment Method con tarjeta: {card_number[:4]}****{card_number[-4:]}")
+                    
+                    # Crear Payment Method con los datos de la tarjeta
+                    payment_method = stripe.PaymentMethod.create(
+                        type="card",
+                        card={
+                            "number": card_number,
+                            "exp_month": int(exp_month),
+                            "exp_year": int(exp_year) if len(exp_year) == 4 else int(f"20{exp_year}"),
+                            "cvc": cvc,
+                        },
+                    )
+                    payment_method_id = payment_method.id
+                    logger.info(f"✅ Payment Method creado: {payment_method_id}")
+                    
+                except stripe.error.CardError as e:
+                    logger.error(f"❌ Error con la tarjeta: {str(e)}")
+                    return Response(
+                        {"error": f"Tarjeta rechazada: {str(e)}"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Error al crear Payment Method: {str(e)}")
+                    return Response(
+                        {"error": f"Error al procesar tarjeta: {str(e)}"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             else:
-                return Response(
-                    {
-                        "error": "Para pruebas, usa payment_method_id o una tarjeta de prueba válida",
-                        "test_cards": list(test_cards.keys()),
-                        "test_payment_methods": list(test_cards.values())
-                    }, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Intentar mapear tarjetas de prueba
+                test_cards = {
+                    "4242424242424242": "pm_card_visa",
+                    "5555555555554444": "pm_card_mastercard",
+                    "378282246310005": "pm_card_amex",
+                }
+                
+                if card_number in test_cards:
+                    payment_method_id = test_cards[card_number]
+                    logger.info(f"💳 Mapeando tarjeta de prueba a: {payment_method_id}")
+                else:
+                    return Response(
+                        {
+                            "error": "Debes proporcionar payment_method_id o los datos completos de la tarjeta (card_number, exp_month, exp_year, cvc)",
+                            "test_cards": list(test_cards.keys()),
+                        }, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
         
         if not payment_method_id:
             return Response(
-                {"error": "payment_method_id o card_number requerido"}, 
+                {"error": "No se pudo obtener o crear el payment_method"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
